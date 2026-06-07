@@ -42,16 +42,16 @@ enum NetworkSetup {
 
     static func apply(_ desired: DesiredNetworkConfiguration, serviceName: String) async throws {
         switch desired {
-        case let .manual(settings):
+        case let .manual(profile):
             let command = [
                 "/usr/sbin/networksetup -setmanual",
                 shellQuote(serviceName),
-                shellQuote(settings.ipAddress.trimmed),
-                shellQuote(settings.subnetMask.trimmed),
-                shellQuote(settings.router.trimmed)
+                shellQuote(profile.ipAddress.trimmed),
+                shellQuote(profile.subnetMask.trimmed),
+                shellQuote(profile.router.trimmed)
             ].joined(separator: " ")
 
-            let dnsCommand = dnsCommand(serviceName: serviceName, servers: settings.dnsServers)
+            let dnsCommand = dnsCommand(serviceName: serviceName, servers: profile.dnsServers)
             try await runAdministratorCommand([command, dnsCommand].joined(separator: " && "))
 
         case .dhcp:
