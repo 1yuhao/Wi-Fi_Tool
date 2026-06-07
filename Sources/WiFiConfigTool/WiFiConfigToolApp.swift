@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -18,5 +19,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusBarController = StatusBarController(controller: controller)
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        statusBarController?.showConfigurationWindow()
+        return false
     }
 }

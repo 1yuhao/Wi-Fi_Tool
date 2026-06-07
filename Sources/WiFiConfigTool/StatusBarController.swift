@@ -7,11 +7,13 @@ final class StatusBarController: NSObject {
     private let controller: WiFiController
     private let statusItem: NSStatusItem
     private let popover: NSPopover
+    private var configurationWindow: NSWindow?
     private var cancellables = Set<AnyCancellable>()
 
     init(controller: WiFiController) {
         self.controller = controller
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem.autosaveName = "WiFiConfigToolStatusItem"
         popover = NSPopover()
 
         super.init()
@@ -71,6 +73,33 @@ final class StatusBarController: NSObject {
         button.title = " WiFi"
         button.toolTip = controller.menuTitle
         button.setAccessibilityLabel(controller.menuTitle)
+    }
+
+    func showConfigurationWindow() {
+        if let configurationWindow {
+            configurationWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 680),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Wi-Fi 配置工具"
+        window.contentMinSize = NSSize(width: 460, height: 520)
+        window.contentViewController = NSHostingController(
+            rootView: ContentView()
+                .environmentObject(controller)
+        )
+        window.center()
+        window.setFrameAutosaveName("WiFiConfigToolConfigurationWindow")
+        configurationWindow = window
+
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc
