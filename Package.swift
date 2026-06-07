@@ -11,12 +11,22 @@ let package = Package(
         .executable(name: "WiFiConfigTool", targets: ["WiFiConfigTool"])
     ],
     targets: [
+        .target(
+            name: "AuthorizationShim",
+            linkerSettings: [
+                .linkedFramework("Security")
+            ]
+        ),
         .executableTarget(
             name: "WiFiConfigTool",
+            dependencies: [
+                "AuthorizationShim"
+            ],
             path: "Sources/WiFiConfigTool",
             linkerSettings: [
                 .linkedFramework("CoreLocation"),
-                .linkedFramework("CoreWLAN")
+                .linkedFramework("CoreWLAN"),
+                .linkedFramework("Security")
             ]
         )
     ]

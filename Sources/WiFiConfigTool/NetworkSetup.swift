@@ -11,6 +11,7 @@ enum NetworkSetupError: LocalizedError {
     case commandFailed(executable: String, arguments: [String], status: Int32, stdout: String, stderr: String)
     case wifiServiceNotFound
     case administratorAuthorizationCancelled
+    case administratorAuthorizationFailed(status: Int32)
 
     var errorDescription: String? {
         switch self {
@@ -22,6 +23,8 @@ enum NetworkSetupError: LocalizedError {
             return "No Wi-Fi network service was found on this Mac."
         case .administratorAuthorizationCancelled:
             return "Administrator authorization was cancelled."
+        case let .administratorAuthorizationFailed(status):
+            return "Administrator authorization failed with status \(status)."
         }
     }
 }
@@ -153,16 +156,7 @@ enum NetworkSetup {
     }
 
     private static func runAdministratorCommand(_ shellCommand: String) async throws {
-        let script = #"do shell script "\#(appleScriptEscaped(shellCommand))" with administrator privileges"#
-        do {
-            _ = try await run("/usr/bin/osascript", ["-e", script])
-        } catch let error as NetworkSetupError {
-            if error.errorDescription?.localizedCaseInsensitiveContains("User canceled") == true
-                || error.errorDescription?.localizedCaseInsensitiveContains("cancelled") == true {
-                throw NetworkSetupError.administratorAuthorizationCancelled
-            }
-            throw error
-        }
+        _ = try await AdministratorCommandRunner.shared.run(shellCommand)
     }
 
     private static func dnsCommand(serviceName: String, servers: [String]) -> String {
@@ -286,12 +280,6 @@ enum NetworkSetup {
 
     private static func shellQuote(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
-    }
-
-    private static func appleScriptEscaped(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
     }
 
     private static func normalizedSSID(_ value: String?) -> String? {
