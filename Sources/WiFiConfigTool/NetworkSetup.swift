@@ -1,4 +1,5 @@
 import Foundation
+import CoreWLAN
 
 struct CommandResult: Sendable {
     var stdout: String
@@ -81,18 +82,39 @@ enum NetworkSetup {
     }
 
     private static func currentSSID(deviceName: String) async throws -> String? {
+        if let ssid = await currentSSIDFromCoreWLAN(deviceName: deviceName) {
+            return ssid
+        }
+
+        if let ssid = try await currentSSIDFromNetworkSetup(deviceName: deviceName) {
+            return ssid
+        }
+
+        return try await currentSSIDFromIPConfig(deviceName: deviceName)
+    }
+
+    @MainActor
+    private static func currentSSIDFromCoreWLAN(deviceName: String) -> String? {
+        let client = CWWiFiClient.shared()
+        let interface = client.interface(withName: deviceName) ?? client.interface()
+        return normalizedSSID(interface?.ssid())
+    }
+
+    private static func currentSSIDFromNetworkSetup(deviceName: String) async throws -> String? {
         let result = try await run("/usr/sbin/networksetup", ["-getairportnetwork", deviceName])
         let output = result.stdout.trimmed
-        if output.localizedCaseInsensitiveContains("not associated") {
-            return nil
-        }
 
         let prefix = "Current Wi-Fi Network:"
         if output.hasPrefix(prefix) {
-            return output.dropFirst(prefix.count).trimmingCharacters(in: .whitespacesAndNewlines)
+            return normalizedSSID(String(output.dropFirst(prefix.count)))
         }
 
-        return output.isEmpty ? nil : output
+        return normalizedSSID(output)
+    }
+
+    private static func currentSSIDFromIPConfig(deviceName: String) async throws -> String? {
+        let output = try await run("/usr/sbin/ipconfig", ["getsummary", deviceName]).stdout
+        return normalizedSSID(parseValue(named: "SSID", in: output))
     }
 
     private static func serviceInfo(serviceName: String) async throws -> WiFiStatus {
@@ -237,15 +259,20 @@ enum NetworkSetup {
     }
 
     private static func parseValue(named name: String, in output: String) -> String? {
-        output
-            .split(whereSeparator: \.isNewline)
-            .map(String.init)
-            .first { $0.localizedCaseInsensitiveContains("\(name):") }?
-            .components(separatedBy: ":")
-            .dropFirst()
-            .joined(separator: ":")
-            .trimmed
-            .nilIfEmpty
+        for line in output.split(whereSeparator: \.isNewline).map(String.init) {
+            let parts = line.split(separator: ":", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else {
+                continue
+            }
+
+            guard parts[0].trimmed.compare(name, options: .caseInsensitive) == .orderedSame else {
+                continue
+            }
+
+            return parts[1].trimmed.nilIfEmpty
+        }
+
+        return nil
     }
 
     private static func parseParenthesizedValue(named name: String, in line: String) -> String? {
@@ -265,6 +292,17 @@ enum NetworkSetup {
         value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
+    private static func normalizedSSID(_ value: String?) -> String? {
+        guard let ssid = value?.trimmed,
+              !ssid.isEmpty,
+              ssid != "<redacted>",
+              !ssid.localizedCaseInsensitiveContains("not associated") else {
+            return nil
+        }
+
+        return ssid
     }
 }
 

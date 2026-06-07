@@ -13,7 +13,11 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "WiFiConfigTool",
-            path: "Sources/WiFiConfigTool"
+            path: "Sources/WiFiConfigTool",
+            linkerSettings: [
+                .linkedFramework("CoreLocation"),
+                .linkedFramework("CoreWLAN")
+            ]
         )
     ]
 )

@@ -32,6 +32,7 @@ final class WiFiController: ObservableObject {
 
     private let settingsKey = "WiFiConfigTool.settings.v2"
     private let legacySettingsKey = "WiFiConfigTool.settings.v1"
+    private let wifiNameAccess = WiFiNameAccess()
     private var refreshTimer: Timer?
     private var lastAutoAttemptSignature: String?
     private var isNormalizingSettings = false
@@ -65,6 +66,7 @@ final class WiFiController: ObservableObject {
 
         saveSettings()
         refreshLaunchAtLoginStatus()
+        configureWiFiNameAccess()
 
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -152,7 +154,7 @@ final class WiFiController: ObservableObject {
     var currentPolicySubtitle: String {
         guard status.currentSSID != nil else {
             if status.serviceName != nil || status.ipAddress != nil {
-                return "可以手动填写家庭 Wi-Fi 名称，也可以稍后刷新后再使用当前名称。"
+                return "macOS 需要位置权限才能读取 Wi-Fi 名称；也可以手动填写名称后保存当前配置。"
             }
             return "连接 Wi-Fi 后会显示将要应用的策略。"
         }
@@ -366,6 +368,19 @@ final class WiFiController: ObservableObject {
         let status = SMAppService.mainApp.status
         launchAtLoginEnabled = status == .enabled
         launchAtLoginRequiresApproval = status == .requiresApproval
+    }
+
+    private func configureWiFiNameAccess() {
+        wifiNameAccess.onAuthorizationChange = { [weak self] in
+            Task { @MainActor in
+                await self?.refresh()
+            }
+        }
+
+        if wifiNameAccess.needsAuthorization {
+            setMessage("macOS 需要位置权限才能读取 Wi-Fi 名称；请在弹窗中允许。", kind: .info)
+        }
+        wifiNameAccess.requestAuthorizationIfNeeded()
     }
 
     private func updateStatus(showSuccessMessage: Bool) async {
