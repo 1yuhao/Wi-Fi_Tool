@@ -2,13 +2,21 @@ import SwiftUI
 
 @main
 struct WiFiConfigToolApp: App {
-    @StateObject private var controller = WiFiController()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        MenuBarExtra("Wi-Fi 工具", systemImage: controller.menuSystemImage) {
-            ContentView()
-                .environmentObject(controller)
+        Settings {
+            EmptyView()
         }
-        .menuBarExtraStyle(.window)
+    }
+}
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let controller = WiFiController()
+    private var statusBarController: StatusBarController?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        statusBarController = StatusBarController(controller: controller)
     }
 }
