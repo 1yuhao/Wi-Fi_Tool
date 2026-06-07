@@ -35,6 +35,9 @@ final class WiFiController: ObservableObject {
     private let wifiNameAccess = WiFiNameAccess()
     private var refreshTimer: Timer?
     private var lastAutoAttemptSignature: String?
+    private var currentSelectionSSID: String?
+    private var manualSelectionSSID: String?
+    private var manualSelectionProfileID: UUID?
     private var isNormalizingSettings = false
 
     init() {
@@ -133,7 +136,7 @@ final class WiFiController: ObservableObject {
         guard let ssid = status.currentSSID else {
             return "无"
         }
-        return settings.matchingProfile(for: ssid)?.displayName ?? "未匹配"
+        return settings.matchingProfile(for: ssid, preferredProfileID: settings.selectedProfileID)?.displayName ?? "未匹配"
     }
 
     var currentPolicyTitle: String {
@@ -144,7 +147,12 @@ final class WiFiController: ObservableObject {
             return "未连接 Wi-Fi"
         }
 
-        if let profile = settings.matchingProfile(for: ssid) {
+        if isUsingManualSelectionForCurrentNetwork,
+           let selectedProfile {
+            return "手动选择：\(selectedProfile.displayName)"
+        }
+
+        if let profile = settings.matchingProfile(for: ssid, preferredProfileID: settings.selectedProfileID) {
             return "已匹配：\(profile.displayName)"
         }
 
@@ -159,8 +167,12 @@ final class WiFiController: ObservableObject {
             return "连接 Wi-Fi 后会显示将要应用的策略。"
         }
 
+        if isUsingManualSelectionForCurrentNetwork {
+            return "已手动切换配置；刷新不会自动改回匹配档。"
+        }
+
         if let ssid = status.currentSSID,
-           let profile = settings.matchingProfile(for: ssid) {
+           let profile = settings.matchingProfile(for: ssid, preferredProfileID: settings.selectedProfileID) {
             return "自动应用时会切换为 \(profile.mode.displayName)。"
         }
 
@@ -187,6 +199,17 @@ final class WiFiController: ObservableObject {
         status.serviceName != nil && !isBusy
     }
 
+    private var isUsingManualSelectionForCurrentNetwork: Bool {
+        guard let ssid = status.currentSSID?.trimmed.nilIfEmpty,
+              let manualSelectionSSID,
+              manualSelectionSSID == ssid,
+              manualSelectionProfileID == settings.selectedProfileID else {
+            return false
+        }
+
+        return true
+    }
+
     func refresh() async {
         await updateStatus(showSuccessMessage: true)
     }
@@ -200,17 +223,38 @@ final class WiFiController: ObservableObject {
         settings.profiles.first { $0.id == id }
     }
 
+    func selectProfile(_ profileID: UUID?) {
+        settings.selectedProfileID = profileID
+
+        guard let profileID,
+              let ssid = status.currentSSID?.trimmed.nilIfEmpty else {
+            manualSelectionSSID = nil
+            manualSelectionProfileID = nil
+            return
+        }
+
+        let matchingProfile = settings.matchingProfile(for: ssid, preferredProfileID: profileID)
+        if matchingProfile?.id == profileID {
+            manualSelectionSSID = nil
+            manualSelectionProfileID = nil
+        } else {
+            manualSelectionSSID = ssid
+            manualSelectionProfileID = profileID
+        }
+    }
+
     func updateProfile(_ profile: WiFiProfile) {
         guard let index = settings.profiles.firstIndex(where: { $0.id == profile.id }) else {
             return
         }
         settings.profiles[index] = profile
+        syncSelectedProfileWithCurrentNetwork()
     }
 
     func addProfile() {
         let profile = WiFiProfile.makeDefaultDHCP()
         settings.profiles.append(profile)
-        settings.selectedProfileID = profile.id
+        selectProfile(profile.id)
         setMessage("已新增配置档。", kind: .success)
     }
 
@@ -221,7 +265,7 @@ final class WiFiController: ObservableObject {
         profile.id = UUID()
         profile.name = "\(profile.displayName) 副本"
         settings.profiles.append(profile)
-        settings.selectedProfileID = profile.id
+        selectProfile(profile.id)
         setMessage("已复制配置档。", kind: .success)
     }
 
@@ -233,12 +277,16 @@ final class WiFiController: ObservableObject {
         if settings.profiles.count == 1 {
             settings.profiles = [WiFiProfile.makeDefaultManual()]
             settings.selectedProfileID = settings.profiles.first?.id
+            clearManualSelection()
+            syncSelectedProfileWithCurrentNetwork()
             setMessage("已重置最后一个配置档。", kind: .success)
             return
         }
 
         settings.profiles.removeAll { $0.id == selectedProfileID }
         settings.selectedProfileID = settings.profiles.first?.id
+        clearManualSelection()
+        syncSelectedProfileWithCurrentNetwork()
         setMessage("已删除配置档。", kind: .success)
     }
 
@@ -262,7 +310,8 @@ final class WiFiController: ObservableObject {
             return
         }
 
-        guard let updatedProfile = currentStatusProfile(id: profile.id, fallbackName: profile.displayName, ssidOverride: ssidOverride) else {
+        let fallbackName = profile.usesDefaultName ? nil : profile.displayName
+        guard let updatedProfile = currentStatusProfile(id: profile.id, fallbackName: fallbackName, ssidOverride: ssidOverride) else {
             setMessage("请先填写 Wi-Fi 名称，再保存当前配置。", kind: .warning)
             return
         }
@@ -285,6 +334,7 @@ final class WiFiController: ObservableObject {
         }
 
         settings.profiles.append(profile)
+        clearManualSelection()
         settings.selectedProfileID = profile.id
         setMessage("已保存当前配置：\(profile.displayName)。", kind: .success)
     }
@@ -393,6 +443,7 @@ final class WiFiController: ObservableObject {
 
         do {
             status = try await NetworkSetup.currentStatus()
+            syncSelectedProfileWithCurrentNetwork()
             if showSuccessMessage {
                 setMessage("已刷新 \(Date.now.formatted(date: .omitted, time: .shortened))。", kind: .success)
             }
@@ -411,7 +462,7 @@ final class WiFiController: ObservableObject {
         }
 
         let desired: DesiredNetworkConfiguration
-        if let profile = settings.matchingProfile(for: ssid), profile.isReady {
+        if let profile = settings.matchingProfile(for: ssid, preferredProfileID: settings.selectedProfileID), profile.isReady {
             desired = profile.mode == .manual ? .manual(profile) : .dhcp
         } else if settings.applyDHCPForUnmatchedNetworks {
             desired = .dhcp
@@ -500,6 +551,38 @@ final class WiFiController: ObservableObject {
                 profile.dnsServers.joined(separator: ",")
             ].joined(separator: "|")
         }
+    }
+
+    private func syncSelectedProfileWithCurrentNetwork() {
+        let ssid = status.currentSSID?.trimmed.nilIfEmpty
+        if ssid != currentSelectionSSID {
+            currentSelectionSSID = ssid
+            clearManualSelection()
+        }
+
+        guard let ssid,
+              let matchingProfile = settings.matchingProfile(for: ssid, preferredProfileID: settings.selectedProfileID) else {
+            return
+        }
+
+        if let manualSelectionSSID,
+           let manualSelectionProfileID,
+           manualSelectionSSID == ssid,
+           settings.profiles.contains(where: { $0.id == manualSelectionProfileID }) {
+            if settings.selectedProfileID != manualSelectionProfileID {
+                settings.selectedProfileID = manualSelectionProfileID
+            }
+            return
+        }
+
+        if settings.selectedProfileID != matchingProfile.id {
+            settings.selectedProfileID = matchingProfile.id
+        }
+    }
+
+    private func clearManualSelection() {
+        manualSelectionSSID = nil
+        manualSelectionProfileID = nil
     }
 
     private func normalizeSettings() {

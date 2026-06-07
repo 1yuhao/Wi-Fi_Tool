@@ -132,7 +132,7 @@ struct ContentView: View {
                     formRow("下次使用") {
                         Picker("选择配置", selection: Binding(
                             get: { controller.settings.selectedProfileID },
-                            set: { controller.settings.selectedProfileID = $0 }
+                            set: { controller.selectProfile($0) }
                         )) {
                             ForEach(controller.settings.profiles) { profile in
                                 Label(profile.displayName, systemImage: profile.mode.systemImage)
@@ -234,7 +234,7 @@ struct ContentView: View {
                 HStack(spacing: 8) {
                     Picker("配置档", selection: Binding(
                         get: { controller.settings.selectedProfileID },
-                        set: { controller.settings.selectedProfileID = $0 }
+                        set: { controller.selectProfile($0) }
                     )) {
                         ForEach(controller.settings.profiles) { profile in
                             Label(profile.displayName, systemImage: profile.mode.systemImage)

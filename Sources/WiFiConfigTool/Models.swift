@@ -99,6 +99,14 @@ struct WiFiProfile: Identifiable, Codable, Equatable, Sendable {
         return "未命名配置档"
     }
 
+    var usesDefaultName: Bool {
+        let value = name.trimmed
+        return value.isEmpty
+            || value == "家庭 Wi-Fi"
+            || value == "新配置档"
+            || value == ssid.trimmed
+    }
+
     var dnsServers: [String] {
         dnsServersText
             .split(whereSeparator: { $0 == "," || $0 == "\n" || $0 == " " || $0 == "\t" })
@@ -168,8 +176,17 @@ struct AppSettings: Codable, Equatable, Sendable {
         return copy
     }
 
-    func matchingProfile(for ssid: String) -> WiFiProfile? {
-        profiles.first { profile in
+    func matchingProfile(for ssid: String, preferredProfileID: UUID? = nil) -> WiFiProfile? {
+        if let preferredProfileID,
+           let preferredProfile = profiles.first(where: { profile in
+               profile.id == preferredProfileID
+                   && !profile.ssid.trimmed.isEmpty
+                   && profile.ssid.trimmed == ssid.trimmed
+           }) {
+            return preferredProfile
+        }
+
+        return profiles.first { profile in
             !profile.ssid.trimmed.isEmpty && profile.ssid.trimmed == ssid.trimmed
         }
     }
