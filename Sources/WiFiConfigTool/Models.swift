@@ -37,7 +37,7 @@ enum WiFiProfileMode: String, CaseIterable, Codable, Identifiable, Sendable {
     var systemImage: String {
         switch self {
         case .manual:
-            "wifi.router"
+            "network"
         case .dhcp:
             "network"
         }

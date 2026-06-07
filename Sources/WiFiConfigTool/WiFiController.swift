@@ -93,9 +93,9 @@ final class WiFiController: ObservableObject {
         case .dhcp:
             return "wifi"
         case .manual:
-            return "wifi.router"
+            return "network"
         case .unknown:
-            return "wifi.exclamationmark"
+            return "exclamationmark.triangle"
         }
     }
 
