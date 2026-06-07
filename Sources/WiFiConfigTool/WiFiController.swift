@@ -100,7 +100,15 @@ final class WiFiController: ObservableObject {
     }
 
     var currentSSIDLabel: String {
-        status.currentSSID ?? "未连接"
+        if let ssid = status.currentSSID, !ssid.isEmpty {
+            return ssid
+        }
+
+        if status.serviceName != nil || status.ipAddress != nil {
+            return "已连接，名称不可用"
+        }
+
+        return "未连接"
     }
 
     var currentServiceLabel: String {
@@ -128,6 +136,9 @@ final class WiFiController: ObservableObject {
 
     var currentPolicyTitle: String {
         guard let ssid = status.currentSSID?.trimmed, !ssid.isEmpty else {
+            if status.serviceName != nil || status.ipAddress != nil {
+                return "已连接 Wi-Fi，未读取到名称"
+            }
             return "未连接 Wi-Fi"
         }
 
@@ -140,6 +151,9 @@ final class WiFiController: ObservableObject {
 
     var currentPolicySubtitle: String {
         guard status.currentSSID != nil else {
+            if status.serviceName != nil || status.ipAddress != nil {
+                return "可以手动填写家庭 Wi-Fi 名称，也可以稍后刷新后再使用当前名称。"
+            }
             return "连接 Wi-Fi 后会显示将要应用的策略。"
         }
 

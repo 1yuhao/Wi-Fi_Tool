@@ -1,41 +1,45 @@
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var controller: WiFiController
+    @State private var showsAdvancedSettings = false
 
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 14) {
                     header
-                    statusSummary
-                    automationSettings
-                    profileToolbar
-                    selectedProfileEditor
-                    snapshotActions
-                    primaryActions
+                    currentNetworkPanel
+                    homeWiFiPanel
+                    automaticSwitchingPanel
+                    advancedSettings
                 }
                 .padding(16)
             }
 
             Divider()
+            primaryActions
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            Divider()
             feedbackBar
         }
-        .frame(width: 500)
-        .frame(maxHeight: 680)
+        .frame(width: 520)
+        .frame(maxHeight: 700)
     }
 
     private var header: some View {
         HStack(spacing: 10) {
             Image(systemName: controller.menuSystemImage)
-                .font(.system(size: 21, weight: .semibold))
+                .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(controller.feedbackKind.tint)
                 .frame(width: 28, height: 28)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Wi-Fi 配置工具")
                     .font(.headline)
-                Text(controller.currentSSIDLabel)
+                Text(simpleStatusText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -43,74 +47,107 @@ struct ContentView: View {
 
             Spacer()
 
+            statusBadge(controller.autoApplyLabel, isActive: controller.settings.autoApply)
+
             compactIconButton("arrow.clockwise", help: "刷新", disabled: controller.isBusy) {
                 Task { await controller.refresh() }
             }
         }
     }
 
-    private var statusSummary: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading, spacing: 3) {
+    private var currentNetworkPanel: some View {
+        panel("当前网络", systemImage: controller.menuSystemImage) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(controller.currentPolicyTitle)
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
-                    Text(controller.currentPolicySubtitle)
-                        .font(.caption)
+
+                    Spacer()
+
+                    Text(controller.currentMethodLabel)
+                        .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Spacer()
+                Text(controller.currentPolicySubtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                statusBadge(controller.autoApplyLabel, isActive: controller.settings.autoApply)
+                VStack(spacing: 6) {
+                    infoRow("Wi-Fi", controller.currentSSIDLabel)
+                    infoRow("IP", controller.status.ipAddress ?? "-")
+                    infoRow("路由器", controller.status.router ?? "-")
+                    infoRow("DNS", controller.status.dnsServers.joined(separator: ", ").nilIfEmpty ?? "-")
+                }
             }
+        }
+    }
 
-            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 7) {
-                summaryRow("服务", controller.currentServiceLabel, "模式", controller.currentMethodLabel)
-                summaryRow("IP", controller.status.ipAddress ?? "-", "路由器", controller.status.router ?? "-")
-                summaryRow("DNS", controller.status.dnsServers.joined(separator: ", ").nilIfEmpty ?? "-", "匹配", controller.matchedProfileLabel)
+    @ViewBuilder
+    private var homeWiFiPanel: some View {
+        if let profile = selectedProfileBinding {
+            panel("家庭 Wi-Fi", systemImage: "house") {
+                VStack(alignment: .leading, spacing: 12) {
+                    formRow("名称") {
+                        TextField("例如 家庭 Wi-Fi", text: profile.name)
+                    }
+
+                    formRow("Wi-Fi 名称") {
+                        HStack(spacing: 8) {
+                            TextField("家里 Wi-Fi 的名称", text: profile.ssid)
+
+                            Button {
+                                controller.useCurrentSSIDForSelectedProfile()
+                            } label: {
+                                Image(systemName: "target")
+                            }
+                            .disabled(controller.status.currentSSID == nil)
+                            .help("使用当前连接的 Wi-Fi 名称")
+                        }
+                    }
+
+                    formRow("连接方式") {
+                        Picker("连接方式", selection: profile.mode) {
+                            Text("手动 IP").tag(WiFiProfileMode.manual)
+                            Text("DHCP").tag(WiFiProfileMode.dhcp)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
+                    if profile.wrappedValue.mode == .manual {
+                        manualAddressFields(profile)
+                    }
+
+                    validationMessages(for: profile.wrappedValue)
+                }
+                .textFieldStyle(.roundedBorder)
             }
-            .font(.callout)
+        } else {
+            panel("家庭 Wi-Fi", systemImage: "house") {
+                Text("暂无配置档。")
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
-    private func summaryRow(_ firstTitle: String, _ firstValue: String, _ secondTitle: String, _ secondValue: String) -> some View {
-        GridRow {
-            summaryCell(firstTitle, firstValue)
-            summaryCell(secondTitle, secondValue)
-        }
-    }
-
-    private func summaryCell(_ title: String, _ value: String) -> some View {
-        HStack(spacing: 6) {
-            Text(title)
-                .foregroundStyle(.secondary)
-                .frame(width: 44, alignment: .leading)
-            Text(value)
-                .lineLimit(1)
-                .textSelection(.enabled)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var automationSettings: some View {
-        section("自动化") {
+    private var automaticSwitchingPanel: some View {
+        panel("自动切换", systemImage: "bolt.horizontal") {
             VStack(alignment: .leading, spacing: 10) {
                 Toggle(isOn: $controller.settings.autoApply) {
-                    Label("自动应用匹配配置", systemImage: "bolt.horizontal")
+                    Label("连接匹配的 Wi-Fi 时自动应用配置", systemImage: "bolt.horizontal")
                 }
 
                 Toggle(isOn: $controller.settings.applyDHCPForUnmatchedNetworks) {
-                    Label("未匹配 Wi-Fi 使用 DHCP", systemImage: "arrow.triangle.2.circlepath")
+                    Label("其他 Wi-Fi 自动恢复 DHCP", systemImage: "arrow.triangle.2.circlepath")
                 }
 
                 Toggle(isOn: Binding(
                     get: { controller.launchAtLoginEnabled },
                     set: { controller.setLaunchAtLogin($0) }
                 )) {
-                    Label("开机自动启动", systemImage: "poweron")
+                    Label("开机后自动运行", systemImage: "poweron")
                 }
 
                 if controller.launchAtLoginRequiresApproval {
@@ -122,8 +159,56 @@ struct ContentView: View {
         }
     }
 
+    private var primaryActions: some View {
+        HStack(spacing: 10) {
+            Button {
+                Task { await controller.applySelectedProfile() }
+            } label: {
+                Label(primaryApplyTitle, systemImage: "checkmark.circle")
+                    .frame(maxWidth: .infinity)
+            }
+            .disabled(!controller.canApplySelectedProfile)
+            .keyboardShortcut(.return, modifiers: .command)
+
+            Button {
+                Task { await controller.applyDHCPConfiguration() }
+            } label: {
+                Label("恢复 DHCP", systemImage: "network")
+                    .frame(maxWidth: .infinity)
+            }
+            .disabled(!controller.canApplyDHCP)
+
+            compactIconButton("power", help: "退出") {
+                NSApplication.shared.terminate(nil)
+            }
+        }
+    }
+
+    private var advancedSettings: some View {
+        DisclosureGroup(isExpanded: $showsAdvancedSettings) {
+            VStack(alignment: .leading, spacing: 14) {
+                profileToolbar
+                snapshotActions
+                selectedProfileEditor
+            }
+            .padding(.top, 10)
+        } label: {
+            Label("高级设置", systemImage: "slider.horizontal.3")
+                .font(.subheadline.weight(.semibold))
+        }
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.secondary.opacity(0.14))
+        }
+    }
+
     private var profileToolbar: some View {
-        section("配置档") {
+        section("多个配置档") {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     Picker("配置档", selection: Binding(
@@ -149,21 +234,12 @@ struct ContentView: View {
                     }
                 }
 
-                HStack(spacing: 8) {
-                    Button {
-                        controller.useCurrentSSIDForSelectedProfile()
-                    } label: {
-                        Label("使用当前 Wi-Fi 名称", systemImage: "target")
-                    }
-                    .disabled(controller.status.currentSSID == nil || controller.selectedProfile == nil)
-
-                    Button {
-                        controller.inspectSelectedProfile()
-                    } label: {
-                        Label("检查配置", systemImage: "checklist")
-                    }
-                    .disabled(controller.selectedProfile == nil)
+                Button {
+                    controller.inspectSelectedProfile()
+                } label: {
+                    Label("检查配置", systemImage: "checklist")
                 }
+                .disabled(controller.selectedProfile == nil)
                 .controlSize(.small)
             }
         }
@@ -172,53 +248,18 @@ struct ContentView: View {
     @ViewBuilder
     private var selectedProfileEditor: some View {
         if let profile = selectedProfileBinding {
-            VStack(alignment: .leading, spacing: 16) {
-                section("匹配条件") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        formRow("名称") {
-                            TextField("例如 家庭 Wi-Fi", text: profile.name)
-                        }
-                        formRow("SSID") {
-                            TextField("要匹配的 Wi-Fi 名称", text: profile.ssid)
-                        }
+            section("详细配置") {
+                VStack(alignment: .leading, spacing: 10) {
+                    formRow("SSID") {
+                        TextField("要匹配的 Wi-Fi 名称", text: profile.ssid)
                     }
-                    .textFieldStyle(.roundedBorder)
-                }
 
-                section("连接策略") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        formRow("策略") {
-                            Picker("连接策略", selection: profile.mode) {
-                                ForEach(WiFiProfileMode.allCases) { mode in
-                                    Text(mode.displayName).tag(mode)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                        }
-
-                        if profile.wrappedValue.mode == .manual {
-                            formRow("IP 地址") {
-                                TextField("例如 192.168.1.20", text: profile.ipAddress)
-                            }
-                            formRow("子网掩码") {
-                                TextField("例如 255.255.255.0", text: profile.subnetMask)
-                            }
-                            formRow("路由器") {
-                                TextField("例如 192.168.1.1", text: profile.router)
-                            }
-                            formRow("DNS") {
-                                TextField("例如 1.1.1.1, 8.8.8.8", text: profile.dnsServersText)
-                            }
-                        }
-
-                        validationMessages(for: profile.wrappedValue)
+                    if profile.wrappedValue.mode == .manual {
+                        manualAddressFields(profile)
                     }
-                    .textFieldStyle(.roundedBorder)
                 }
+                .textFieldStyle(.roundedBorder)
             }
-        } else {
-            Text("暂无配置档。")
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -244,6 +285,22 @@ struct ContentView: View {
     }
 
     @ViewBuilder
+    private func manualAddressFields(_ profile: Binding<WiFiProfile>) -> some View {
+        formRow("IP 地址") {
+            TextField("例如 192.168.1.20", text: profile.ipAddress)
+        }
+        formRow("子网掩码") {
+            TextField("例如 255.255.255.0", text: profile.subnetMask)
+        }
+        formRow("路由器") {
+            TextField("例如 192.168.1.1", text: profile.router)
+        }
+        formRow("DNS") {
+            TextField("例如 1.1.1.1, 8.8.8.8", text: profile.dnsServersText)
+        }
+    }
+
+    @ViewBuilder
     private func validationMessages(for profile: WiFiProfile) -> some View {
         let messages = profile.validationMessages
         if !messages.isEmpty {
@@ -253,31 +310,6 @@ struct ContentView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
-            }
-        }
-    }
-
-    private var primaryActions: some View {
-        HStack(spacing: 8) {
-            Button {
-                Task { await controller.applySelectedProfile() }
-            } label: {
-                Label("应用配置", systemImage: "checkmark.circle")
-            }
-            .disabled(!controller.canApplySelectedProfile)
-            .keyboardShortcut(.return, modifiers: .command)
-
-            Button {
-                Task { await controller.applyDHCPConfiguration() }
-            } label: {
-                Label("恢复 DHCP", systemImage: "network")
-            }
-            .disabled(!controller.canApplyDHCP)
-
-            Spacer()
-
-            compactIconButton("power", help: "退出") {
-                NSApplication.shared.terminate(nil)
             }
         }
     }
@@ -305,6 +337,24 @@ struct ContentView: View {
         .frame(minHeight: 42, alignment: .leading)
     }
 
+    private func panel<Content: View>(_ title: String, systemImage: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: systemImage)
+                .font(.subheadline.weight(.semibold))
+
+            content()
+        }
+        .padding(14)
+        .background {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.secondary.opacity(0.14))
+        }
+    }
+
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
@@ -319,9 +369,22 @@ struct ContentView: View {
             Text(title)
                 .font(.callout)
                 .foregroundStyle(.secondary)
-                .frame(width: 76, alignment: .leading)
+                .frame(width: 78, alignment: .leading)
             content()
         }
+    }
+
+    private func infoRow(_ title: String, _ value: String) -> some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .foregroundStyle(.secondary)
+                .frame(width: 56, alignment: .leading)
+            Text(value)
+                .lineLimit(1)
+                .textSelection(.enabled)
+            Spacer(minLength: 0)
+        }
+        .font(.callout)
     }
 
     private func statusBadge(_ text: String, isActive: Bool) -> some View {
@@ -344,6 +407,23 @@ struct ContentView: View {
         .buttonStyle(.borderless)
         .disabled(disabled)
         .help(help)
+    }
+
+    private var primaryApplyTitle: String {
+        guard let profile = controller.selectedProfile else {
+            return "应用配置"
+        }
+
+        switch profile.mode {
+        case .manual:
+            return "应用手动 IP"
+        case .dhcp:
+            return "应用 DHCP"
+        }
+    }
+
+    private var simpleStatusText: String {
+        "当前：\(controller.currentSSIDLabel)"
     }
 
     private var selectedProfileBinding: Binding<WiFiProfile>? {
