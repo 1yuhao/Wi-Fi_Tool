@@ -4,6 +4,7 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var controller: WiFiController
     @State private var showsAdvancedSettings = false
+    @State private var snapshotSSID = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -11,8 +12,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     header
                     currentNetworkPanel
-                    homeWiFiPanel
-                    automaticSwitchingPanel
+                    savedConfigurationPanel
                     advancedSettings
                 }
                 .padding(16)
@@ -27,6 +27,12 @@ struct ContentView: View {
         }
         .frame(width: 520)
         .frame(maxHeight: 700)
+        .task {
+            syncSnapshotSSIDIfNeeded()
+        }
+        .onChange(of: controller.status.currentSSID) { _ in
+            syncSnapshotSSIDIfNeeded()
+        }
     }
 
     private var header: some View {
@@ -86,20 +92,16 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private var homeWiFiPanel: some View {
+    private var savedConfigurationPanel: some View {
         if let profile = selectedProfileBinding {
-            panel("家庭 Wi-Fi", systemImage: "house") {
+            panel("保存的配置", systemImage: "tray.and.arrow.down") {
                 VStack(alignment: .leading, spacing: 12) {
-                    formRow("名称") {
-                        TextField("例如 家庭 Wi-Fi", text: profile.name)
-                    }
-
                     formRow("Wi-Fi 名称") {
                         HStack(spacing: 8) {
-                            TextField("家里 Wi-Fi 的名称", text: profile.ssid)
+                            TextField("用于识别这个 Wi-Fi", text: $snapshotSSID)
 
                             Button {
-                                controller.useCurrentSSIDForSelectedProfile()
+                                useCurrentSSIDForSnapshot()
                             } label: {
                                 Image(systemName: "target")
                             }
@@ -108,24 +110,43 @@ struct ContentView: View {
                         }
                     }
 
-                    formRow("连接方式") {
-                        Picker("连接方式", selection: profile.mode) {
-                            Text("手动 IP").tag(WiFiProfileMode.manual)
-                            Text("DHCP").tag(WiFiProfileMode.dhcp)
+                    HStack(spacing: 8) {
+                        Button {
+                            controller.saveCurrentStatusAsProfile(ssidOverride: snapshotSSID)
+                        } label: {
+                            Label("保存为选项", systemImage: "plus.square")
                         }
-                        .pickerStyle(.segmented)
+                        .disabled(!canSnapshotConfiguration)
+
+                        Button {
+                            controller.fillSelectedProfileFromCurrentStatus(ssidOverride: snapshotSSID)
+                        } label: {
+                            Label("覆盖选中项", systemImage: "square.and.arrow.down")
+                        }
+                        .disabled(!canSnapshotConfiguration || controller.selectedProfile == nil)
+                    }
+                    .controlSize(.small)
+
+                    Divider()
+
+                    formRow("下次使用") {
+                        Picker("选择配置", selection: Binding(
+                            get: { controller.settings.selectedProfileID },
+                            set: { controller.settings.selectedProfileID = $0 }
+                        )) {
+                            ForEach(controller.settings.profiles) { profile in
+                                Label(profile.displayName, systemImage: profile.mode.systemImage)
+                                    .tag(Optional(profile.id))
+                            }
+                        }
                     }
 
-                    if profile.wrappedValue.mode == .manual {
-                        manualAddressFields(profile)
-                    }
-
-                    validationMessages(for: profile.wrappedValue)
+                    savedProfileSummary(profile.wrappedValue)
                 }
                 .textFieldStyle(.roundedBorder)
             }
         } else {
-            panel("家庭 Wi-Fi", systemImage: "house") {
+            panel("保存的配置", systemImage: "tray.and.arrow.down") {
                 Text("暂无配置档。")
                     .foregroundStyle(.secondary)
             }
@@ -164,7 +185,7 @@ struct ContentView: View {
             Button {
                 Task { await controller.applySelectedProfile() }
             } label: {
-                Label(primaryApplyTitle, systemImage: "checkmark.circle")
+                Label("应用选中配置", systemImage: "checkmark.circle")
                     .frame(maxWidth: .infinity)
             }
             .disabled(!controller.canApplySelectedProfile)
@@ -173,7 +194,7 @@ struct ContentView: View {
             Button {
                 Task { await controller.applyDHCPConfiguration() }
             } label: {
-                Label("恢复 DHCP", systemImage: "network")
+                Label("一键恢复 DHCP", systemImage: "network")
                     .frame(maxWidth: .infinity)
             }
             .disabled(!controller.canApplyDHCP)
@@ -187,8 +208,8 @@ struct ContentView: View {
     private var advancedSettings: some View {
         DisclosureGroup(isExpanded: $showsAdvancedSettings) {
             VStack(alignment: .leading, spacing: 14) {
+                automaticSwitchingPanel
                 profileToolbar
-                snapshotActions
                 selectedProfileEditor
             }
             .padding(.top, 10)
@@ -263,24 +284,17 @@ struct ContentView: View {
         }
     }
 
-    private var snapshotActions: some View {
-        section("当前配置快照") {
-            HStack(spacing: 8) {
-                Button {
-                    controller.fillSelectedProfileFromCurrentStatus()
-                } label: {
-                    Label("填入选中档", systemImage: "square.and.arrow.down")
-                }
-                .disabled(!controller.canUseCurrentNetworkSnapshot || controller.selectedProfile == nil)
+    private func savedProfileSummary(_ profile: WiFiProfile) -> some View {
+        VStack(spacing: 6) {
+            infoRow("名称", profile.displayName)
+            infoRow("Wi-Fi", profile.ssid.trimmed.nilIfEmpty ?? "未设置")
+            infoRow("模式", profile.mode.displayName)
 
-                Button {
-                    controller.saveCurrentStatusAsProfile()
-                } label: {
-                    Label("保存为新档", systemImage: "plus.square.on.square")
-                }
-                .disabled(!controller.canUseCurrentNetworkSnapshot)
+            if profile.mode == .manual {
+                infoRow("IP", profile.ipAddress.trimmed.nilIfEmpty ?? "-")
+                infoRow("路由器", profile.router.trimmed.nilIfEmpty ?? "-")
+                infoRow("DNS", profile.dnsServers.joined(separator: ", ").nilIfEmpty ?? "-")
             }
-            .controlSize(.small)
         }
     }
 
@@ -409,21 +423,29 @@ struct ContentView: View {
         .help(help)
     }
 
-    private var primaryApplyTitle: String {
-        guard let profile = controller.selectedProfile else {
-            return "应用配置"
-        }
-
-        switch profile.mode {
-        case .manual:
-            return "应用手动 IP"
-        case .dhcp:
-            return "应用 DHCP"
-        }
-    }
-
     private var simpleStatusText: String {
         "当前：\(controller.currentSSIDLabel)"
+    }
+
+    private var canSnapshotConfiguration: Bool {
+        let hasWiFiName = !snapshotSSID.trimmed.isEmpty || controller.status.currentSSID?.trimmed.nilIfEmpty != nil
+        return controller.canUseCurrentNetworkSnapshot && hasWiFiName
+    }
+
+    private func useCurrentSSIDForSnapshot() {
+        guard let ssid = controller.status.currentSSID?.trimmed, !ssid.isEmpty else {
+            return
+        }
+
+        snapshotSSID = ssid
+    }
+
+    private func syncSnapshotSSIDIfNeeded() {
+        guard snapshotSSID.trimmed.isEmpty else {
+            return
+        }
+
+        useCurrentSSIDForSnapshot()
     }
 
     private var selectedProfileBinding: Binding<WiFiProfile>? {

@@ -182,7 +182,7 @@ final class WiFiController: ObservableObject {
     }
 
     var canUseCurrentNetworkSnapshot: Bool {
-        status.currentSSID != nil && status.serviceName != nil && !isBusy
+        status.serviceName != nil && !isBusy
     }
 
     func refresh() async {
@@ -254,14 +254,14 @@ final class WiFiController: ObservableObject {
         setMessage("已填入当前 Wi-Fi 名称。", kind: .success)
     }
 
-    func fillSelectedProfileFromCurrentStatus() {
+    func fillSelectedProfileFromCurrentStatus(ssidOverride: String? = nil) {
         guard var profile = selectedProfile else {
             setMessage("请先选择一个配置档。", kind: .warning)
             return
         }
 
-        guard let updatedProfile = currentStatusProfile(id: profile.id, fallbackName: profile.displayName) else {
-            setMessage("当前没有可读取的 Wi-Fi 配置。", kind: .warning)
+        guard let updatedProfile = currentStatusProfile(id: profile.id, fallbackName: profile.displayName, ssidOverride: ssidOverride) else {
+            setMessage("请先填写 Wi-Fi 名称，再保存当前配置。", kind: .warning)
             return
         }
 
@@ -276,15 +276,15 @@ final class WiFiController: ObservableObject {
         setMessage("已把当前网络配置填入选中配置档。", kind: .success)
     }
 
-    func saveCurrentStatusAsProfile() {
-        guard let profile = currentStatusProfile(id: UUID(), fallbackName: nil) else {
-            setMessage("当前没有可保存的 Wi-Fi 配置。", kind: .warning)
+    func saveCurrentStatusAsProfile(ssidOverride: String? = nil) {
+        guard let profile = currentStatusProfile(id: UUID(), fallbackName: nil, ssidOverride: ssidOverride) else {
+            setMessage("请先填写 Wi-Fi 名称，再保存当前配置。", kind: .warning)
             return
         }
 
         settings.profiles.append(profile)
         settings.selectedProfileID = profile.id
-        setMessage("已保存当前网络为新配置档。", kind: .success)
+        setMessage("已保存当前配置：\(profile.displayName)。", kind: .success)
     }
 
     func inspectSelectedProfile() {
@@ -436,8 +436,9 @@ final class WiFiController: ObservableObject {
         }
     }
 
-    private func currentStatusProfile(id: UUID, fallbackName: String?) -> WiFiProfile? {
-        guard let ssid = status.currentSSID?.trimmed, !ssid.isEmpty else {
+    private func currentStatusProfile(id: UUID, fallbackName: String?, ssidOverride: String?) -> WiFiProfile? {
+        let ssid = ssidOverride?.trimmed.nilIfEmpty ?? status.currentSSID?.trimmed.nilIfEmpty
+        guard let ssid else {
             return nil
         }
 
