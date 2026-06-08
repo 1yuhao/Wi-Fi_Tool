@@ -17,6 +17,7 @@ struct ContentView: View {
                 }
                 .padding(16)
             }
+            .background(Color(nsColor: .windowBackgroundColor))
 
             Divider()
             primaryActions
@@ -25,8 +26,9 @@ struct ContentView: View {
             Divider()
             feedbackBar
         }
-        .frame(width: 520)
+        .frame(width: 500)
         .frame(maxHeight: 700)
+        .background(Color(nsColor: .windowBackgroundColor))
         .task {
             syncSnapshotSSIDIfNeeded()
         }
@@ -36,15 +38,12 @@ struct ContentView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
-            Image(systemName: controller.menuSystemImage)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(controller.feedbackKind.tint)
-                .frame(width: 28, height: 28)
+        HStack(spacing: 12) {
+            appMark
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Wi-Fi 配置工具")
-                    .font(.headline)
+                    .font(.headline.weight(.semibold))
                 Text(simpleStatusText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -71,9 +70,7 @@ struct ContentView: View {
 
                     Spacer()
 
-                    Text(controller.currentMethodLabel)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
+                    statusPill(controller.currentMethodLabel, tint: currentMethodTint)
                 }
 
                 Text(controller.currentPolicySubtitle)
@@ -117,6 +114,7 @@ struct ContentView: View {
                             Label("保存为选项", systemImage: "plus.square")
                         }
                         .disabled(!canSnapshotConfiguration)
+                        .buttonStyle(.borderedProminent)
 
                         Button {
                             controller.fillSelectedProfileFromCurrentStatus(ssidOverride: snapshotSSID)
@@ -124,8 +122,9 @@ struct ContentView: View {
                             Label("覆盖选中项", systemImage: "square.and.arrow.down")
                         }
                         .disabled(!canSnapshotConfiguration || controller.selectedProfile == nil)
+                        .buttonStyle(.bordered)
                     }
-                    .controlSize(.small)
+                    .controlSize(.regular)
 
                     Divider()
 
@@ -189,6 +188,7 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity)
             }
             .disabled(!controller.canApplySelectedProfile)
+            .buttonStyle(.borderedProminent)
             .keyboardShortcut(.return, modifiers: .command)
 
             Button {
@@ -198,11 +198,13 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity)
             }
             .disabled(!controller.canApplyDHCP)
+            .buttonStyle(.bordered)
 
             compactIconButton("power", help: "退出") {
                 NSApplication.shared.terminate(nil)
             }
         }
+        .controlSize(.large)
     }
 
     private var advancedSettings: some View {
@@ -217,15 +219,8 @@ struct ContentView: View {
             Label("高级设置", systemImage: "slider.horizontal.3")
                 .font(.subheadline.weight(.semibold))
         }
-        .padding(12)
-        .background {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.secondary.opacity(0.14))
-        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
     }
 
     private var profileToolbar: some View {
@@ -361,12 +356,13 @@ struct ContentView: View {
         .padding(14)
         .background {
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(.regularMaterial)
         }
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.secondary.opacity(0.14))
+                .stroke(Color(nsColor: .separatorColor).opacity(0.28))
         }
+        .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 4)
     }
 
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -396,6 +392,7 @@ struct ContentView: View {
             Text(value)
                 .lineLimit(1)
                 .textSelection(.enabled)
+                .fontWeight(.medium)
             Spacer(minLength: 0)
         }
         .font(.callout)
@@ -421,6 +418,54 @@ struct ContentView: View {
         .buttonStyle(.borderless)
         .disabled(disabled)
         .help(help)
+    }
+
+    private var appMark: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.05, green: 0.36, blue: 0.9),
+                            Color(red: 0.08, green: 0.72, blue: 0.66)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            Image(systemName: "wifi")
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: 36, height: 36)
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.white.opacity(0.32))
+        }
+    }
+
+    private func statusPill(_ text: String, tint: Color) -> some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background {
+                Capsule()
+                    .fill(tint.opacity(0.12))
+            }
+    }
+
+    private var currentMethodTint: Color {
+        switch controller.status.method {
+        case .dhcp:
+            return .green
+        case .manual:
+            return .orange
+        case .unknown:
+            return .secondary
+        }
     }
 
     private var simpleStatusText: String {

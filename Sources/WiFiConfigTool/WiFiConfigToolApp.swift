@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBarController: StatusBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApplication.shared.applicationIconImage = NSImage(named: "AppIcon")
         statusBarController = StatusBarController(controller: controller)
     }
 
