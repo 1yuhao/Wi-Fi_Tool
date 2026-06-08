@@ -63,7 +63,8 @@ enum NetworkSetup {
                 "/usr/sbin/networksetup -setdhcp",
                 shellQuote(serviceName)
             ].joined(separator: " ")
-            try await runAdministratorCommand(command)
+            let dnsCommand = dnsCommand(serviceName: serviceName, servers: [])
+            try await runAdministratorCommand([command, dnsCommand].joined(separator: " && "))
         }
     }
 

@@ -37,43 +37,46 @@ for iconFile in iconFiles {
 private func drawIcon(size: CGFloat) -> NSImage {
     let image = NSImage(size: NSSize(width: size, height: size))
     image.lockFocus()
-    defer {
-        image.unlockFocus()
-    }
+    defer { image.unlockFocus() }
 
     let bounds = NSRect(x: 0, y: 0, width: size, height: size)
     NSColor.clear.setFill()
     bounds.fill()
 
-    let cornerRadius = size * 0.2
-    let backgroundRect = bounds.insetBy(dx: size * 0.055, dy: size * 0.055)
-    let backgroundPath = NSBezierPath(roundedRect: backgroundRect, xRadius: cornerRadius, yRadius: cornerRadius)
+    let iconRect = bounds.insetBy(dx: size * 0.075, dy: size * 0.075)
+    let cornerRadius = size * 0.22
+    let background = NSBezierPath(
+        roundedRect: iconRect,
+        xRadius: cornerRadius,
+        yRadius: cornerRadius
+    )
 
     NSGraphicsContext.current?.saveGraphicsState()
-    backgroundPath.addClip()
+    background.addClip()
 
     let gradient = NSGradient(colors: [
-        NSColor(red: 0.04, green: 0.34, blue: 0.92, alpha: 1),
-        NSColor(red: 0.08, green: 0.64, blue: 0.92, alpha: 1),
-        NSColor(red: 0.10, green: 0.82, blue: 0.62, alpha: 1)
+        NSColor(red: 0.10, green: 0.44, blue: 0.92, alpha: 1),
+        NSColor(red: 0.10, green: 0.68, blue: 0.92, alpha: 1)
     ])
-    gradient?.draw(in: backgroundRect, angle: -35)
+    gradient?.draw(in: iconRect, angle: -30)
 
-    NSColor.white.withAlphaComponent(0.16).setFill()
-    NSBezierPath(ovalIn: NSRect(x: size * 0.1, y: size * 0.56, width: size * 0.58, height: size * 0.36)).fill()
-
-    NSColor.black.withAlphaComponent(0.12).setFill()
-    NSBezierPath(ovalIn: NSRect(x: size * 0.44, y: size * -0.08, width: size * 0.52, height: size * 0.34)).fill()
+    NSColor.white.withAlphaComponent(0.10).setFill()
+    NSBezierPath(ovalIn: NSRect(
+        x: size * 0.13,
+        y: size * 0.57,
+        width: size * 0.5,
+        height: size * 0.28
+    )).fill()
 
     NSGraphicsContext.current?.restoreGraphicsState()
 
-    NSColor.black.withAlphaComponent(0.14).setStroke()
-    backgroundPath.lineWidth = max(size * 0.012, 1)
-    backgroundPath.stroke()
+    NSColor.black.withAlphaComponent(0.10).setStroke()
+    background.lineWidth = max(size * 0.012, 1)
+    background.stroke()
 
-    let wifiColor = NSColor.white.withAlphaComponent(0.94)
-    let center = NSPoint(x: size * 0.5, y: size * 0.38)
-    for (index, radius) in [0.14, 0.25, 0.36].enumerated() {
+    let center = NSPoint(x: size * 0.5, y: size * 0.35)
+    let strokeColor = NSColor.white.withAlphaComponent(0.94)
+    for (index, radius) in [0.16, 0.28, 0.40].enumerated() {
         let path = NSBezierPath()
         path.appendArc(
             withCenter: center,
@@ -82,40 +85,23 @@ private func drawIcon(size: CGFloat) -> NSImage {
             endAngle: 142,
             clockwise: false
         )
-        path.lineWidth = max(size * (0.035 - CGFloat(index) * 0.003), 1.2)
+        path.lineWidth = max(size * (0.04 - CGFloat(index) * 0.004), 1.3)
         path.lineCapStyle = .round
-        wifiColor.setStroke()
+        strokeColor.setStroke()
         path.stroke()
     }
 
-    let dotRect = NSRect(x: size * 0.455, y: size * 0.265, width: size * 0.09, height: size * 0.09)
-    wifiColor.setFill()
+    let dotRadius = size * 0.045
+    let dotRect = NSRect(
+        x: center.x - dotRadius,
+        y: size * 0.24 - dotRadius,
+        width: dotRadius * 2,
+        height: dotRadius * 2
+    )
+    strokeColor.setFill()
     NSBezierPath(ovalIn: dotRect).fill()
 
-    drawNode(at: NSPoint(x: size * 0.31, y: size * 0.22), size: size)
-    drawNode(at: NSPoint(x: size * 0.50, y: size * 0.16), size: size)
-    drawNode(at: NSPoint(x: size * 0.69, y: size * 0.22), size: size)
-    drawConnection(from: NSPoint(x: size * 0.31, y: size * 0.22), to: NSPoint(x: size * 0.50, y: size * 0.16), size: size)
-    drawConnection(from: NSPoint(x: size * 0.50, y: size * 0.16), to: NSPoint(x: size * 0.69, y: size * 0.22), size: size)
-
     return image
-}
-
-private func drawConnection(from start: NSPoint, to end: NSPoint, size: CGFloat) {
-    let path = NSBezierPath()
-    path.move(to: start)
-    path.line(to: end)
-    path.lineWidth = max(size * 0.015, 0.8)
-    path.lineCapStyle = .round
-    NSColor.white.withAlphaComponent(0.52).setStroke()
-    path.stroke()
-}
-
-private func drawNode(at center: NSPoint, size: CGFloat) {
-    let radius = size * 0.035
-    let rect = NSRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
-    NSColor.white.withAlphaComponent(0.9).setFill()
-    NSBezierPath(ovalIn: rect).fill()
 }
 
 private func pngData(from image: NSImage) -> Data? {

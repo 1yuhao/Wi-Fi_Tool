@@ -27,7 +27,7 @@ final class StatusBarController: NSObject {
     private func configurePopover() {
         popover.animates = true
         popover.behavior = .transient
-        popover.contentSize = NSSize(width: 500, height: 640)
+        popover.contentSize = NSSize(width: 500, height: 680)
         popover.contentViewController = NSHostingController(
             rootView: ContentView()
                 .environmentObject(controller)
@@ -83,7 +83,7 @@ final class StatusBarController: NSObject {
         }
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 500, height: 640),
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 680),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
