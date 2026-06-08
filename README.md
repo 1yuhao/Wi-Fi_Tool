@@ -7,13 +7,14 @@
 ## 主要功能
 
 - 菜单栏常驻入口，点击后打开配置面板。
+- 提供简约 app 图标，安装到应用目录后可在 Finder 中识别。
 - 自动读取当前 Wi-Fi 名称、IP、子网掩码、路由器和 DNS。
 - 将当前网络配置保存为一个配置选项。
 - 当前 Wi-Fi 名称会默认绑定同名配置。
 - 连接到已保存的 Wi-Fi 时，自动选中匹配的配置。
 - 支持手动切换到其他配置，刷新时不会立刻覆盖你的手动选择。
 - 一键应用选中配置。
-- 一键恢复 DHCP。
+- 一键恢复 DHCP，并清空残留的手动 DNS。
 - 支持多个 Wi-Fi 配置档。
 - 支持手动 IP 和 DHCP 两种配置模式。
 - 支持自动应用匹配配置。
@@ -60,7 +61,7 @@ macOS 会把 Wi-Fi 名称视为位置相关信息。第一次启动时，系统�
 ### 4. 应用或恢复配置
 
 - 点击 `应用选中配置`：把当前 Wi-Fi 切换到选中的保存配置。
-- 点击 `一键恢复 DHCP`：把当前 Wi-Fi 网络服务恢复为 DHCP。
+- 点击 `一键恢复 DHCP`：把当前 Wi-Fi 网络服务恢复为 DHCP，并把 DNS 恢复为系统自动状态。
 
 第一次修改网络配置时，macOS 会要求管理员授权。授权后，同一次 app 运行期间会复用授权，避免每次都输入密码。
 
@@ -122,6 +123,8 @@ swift build
 ./scripts/build_app.sh
 ```
 
+打包脚本会自动生成 `AppIcon.icns`，写入 app bundle，并对应用做本地签名。
+
 构建完成后会输出：
 
 ```text
@@ -159,6 +162,7 @@ Sources/
     WiFiNameAccess.swift
 scripts/
   build_app.sh
+  generate_app_icon.swift
   install_app.sh
 ```
 
@@ -171,6 +175,7 @@ scripts/
 - `WiFiNameAccess.swift`：请求读取 Wi-Fi 名称所需的位置权限。
 - `AdministratorCommandRunner.swift`：缓存管理员授权并执行网络修改命令。
 - `AuthorizationShim`：用于调用 macOS 授权执行接口的 C shim。
+- `generate_app_icon.swift`：生成简约 app 图标并供打包脚本转换为 `.icns`。
 
 ## 常见问题
 
@@ -197,6 +202,17 @@ open ~/Applications/WiFiConfigTool.app
 ### 为什么修改配置还要管理员权限
 
 macOS 修改网络服务配置必须经过管理员授权。工具已经尽量减少重复输入密码，但首次应用配置仍需要系统授权。
+
+### 恢复 DHCP 后 DNS 会怎样
+
+`一键恢复 DHCP` 会同时执行两件事：
+
+```text
+networksetup -setdhcp <Wi-Fi 服务名>
+networksetup -setdnsservers <Wi-Fi 服务名> Empty
+```
+
+也就是说，手动 DNS 会被清空，DNS 会回到系统自动获取状态。
 
 ### 自动应用没有生效
 
